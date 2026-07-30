@@ -66,12 +66,12 @@ FFI_EXPORT void serial_write(SerialPort* sp, const uint8_t* data, int length);
 /**
  * Ustawia stan linii DTR (Data Terminal Ready).
  */
-FFI_EXPORT void serial_set_dtr(SerialPort* sp, int active);
+FFI_EXPORT int serial_set_dtr(SerialPort* sp, int active);
 
 /**
  * Ustawia stan linii RTS (Request To Send).
  */
-FFI_EXPORT void serial_set_rts(SerialPort* sp, int active);
+FFI_EXPORT int serial_set_rts(SerialPort* sp, int active);
 
 // --- LINIE MODEMOWE (WEJŚCIA) ---
 

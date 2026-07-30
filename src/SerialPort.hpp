@@ -197,12 +197,16 @@ public:
 
             send_simple_event(EVENT_DISCONNECTED);
         }
+
+        std::lock_guard<std::mutex> lock(writeMutex);
+        std::queue<std::vector<uint8_t>> empty;
+        writeQueue.swap(empty);
     }
 
     // Non-blocking: pushes data to write queue, returns immediately
     void write(const uint8_t *data, int length)
     {
-        if (length <= 0) return;
+        if (!running || length <= 0) return;
         std::vector<uint8_t> buf(data, data + length);
         {
             std::lock_guard<std::mutex> lock(writeMutex);
@@ -232,27 +236,27 @@ public:
     }
 #endif
 
-    void set_dtr(bool active)
+    bool set_dtr(bool active)
     {
 #ifdef PLATFORM_WINDOWS
-        if (hSerial == INVALID_HANDLE_VALUE) return;
-        EscapeCommFunction(hSerial, active ? SETDTR : CLRDTR);
+        if (hSerial == INVALID_HANDLE_VALUE) return false;
+        return EscapeCommFunction(hSerial, active ? SETDTR : CLRDTR) != 0;
 #else
-        if (fd == -1) return;
+        if (fd == -1) return false;
         int flag = TIOCM_DTR;
-        ioctl(fd, active ? TIOCMBIS : TIOCMBIC, &flag);
+        return ioctl(fd, active ? TIOCMBIS : TIOCMBIC, &flag) != -1;
 #endif
     }
 
-    void set_rts(bool active)
+    bool set_rts(bool active)
     {
 #ifdef PLATFORM_WINDOWS
-        if (hSerial == INVALID_HANDLE_VALUE) return;
-        EscapeCommFunction(hSerial, active ? SETRTS : CLRRTS);
+        if (hSerial == INVALID_HANDLE_VALUE) return false;
+        return EscapeCommFunction(hSerial, active ? SETRTS : CLRRTS) != 0;
 #else
-        if (fd == -1) return;
+        if (fd == -1) return false;
         int flag = TIOCM_RTS;
-        ioctl(fd, active ? TIOCMBIS : TIOCMBIC, &flag);
+        return ioctl(fd, active ? TIOCMBIS : TIOCMBIC, &flag) != -1;
 #endif
     }
 
@@ -333,8 +337,18 @@ private:
 
 #ifdef PLATFORM_WINDOWS
             if (hSerial == INVALID_HANDLE_VALUE) continue;
-            DWORD written;
-            WriteFile(hSerial, buf.data(), (DWORD)buf.size(), &written, NULL);
+            size_t total = 0;
+            while (total < buf.size() && running)
+            {
+                DWORD written = 0;
+                const DWORD remaining = static_cast<DWORD>(buf.size() - total);
+                if (!WriteFile(hSerial, buf.data() + total, remaining, &written, NULL) || written == 0)
+                {
+                    send_simple_event(EVENT_ERROR);
+                    break;
+                }
+                total += written;
+            }
 #else
             if (fd == -1) continue;
             int total = 0;

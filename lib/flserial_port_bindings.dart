@@ -83,7 +83,15 @@ class FLSerialBindings {
     int parity,
     int flowControl,
   ) {
-    return _serial_open_ext(sp, path, baud, dataBits, stopBits, parity, flowControl);
+    return _serial_open_ext(
+      sp,
+      path,
+      baud,
+      dataBits,
+      stopBits,
+      parity,
+      flowControl,
+    );
   }
 
   late final _serial_open_extPtr =
@@ -150,28 +158,28 @@ class FLSerialBindings {
       >();
 
   /// Ustawia stan linii DTR (Data Terminal Ready).
-  void serial_set_dtr(ffi.Pointer<SerialPort> sp, int active) {
+  int serial_set_dtr(ffi.Pointer<SerialPort> sp, int active) {
     return _serial_set_dtr(sp, active);
   }
 
   late final _serial_set_dtrPtr =
       _lookup<
-        ffi.NativeFunction<ffi.Void Function(ffi.Pointer<SerialPort>, ffi.Int)>
+        ffi.NativeFunction<ffi.Int Function(ffi.Pointer<SerialPort>, ffi.Int)>
       >('serial_set_dtr');
   late final _serial_set_dtr = _serial_set_dtrPtr
-      .asFunction<void Function(ffi.Pointer<SerialPort>, int)>();
+      .asFunction<int Function(ffi.Pointer<SerialPort>, int)>();
 
   /// Ustawia stan linii RTS (Request To Send).
-  void serial_set_rts(ffi.Pointer<SerialPort> sp, int active) {
+  int serial_set_rts(ffi.Pointer<SerialPort> sp, int active) {
     return _serial_set_rts(sp, active);
   }
 
   late final _serial_set_rtsPtr =
       _lookup<
-        ffi.NativeFunction<ffi.Void Function(ffi.Pointer<SerialPort>, ffi.Int)>
+        ffi.NativeFunction<ffi.Int Function(ffi.Pointer<SerialPort>, ffi.Int)>
       >('serial_set_rts');
   late final _serial_set_rts = _serial_set_rtsPtr
-      .asFunction<void Function(ffi.Pointer<SerialPort>, int)>();
+      .asFunction<int Function(ffi.Pointer<SerialPort>, int)>();
 
   /// Pobiera stan linii wejściowych jako maskę bitową:
   /// Bit 0: CTS, Bit 1: DSR, Bit 2: RI, Bit 3: DCD

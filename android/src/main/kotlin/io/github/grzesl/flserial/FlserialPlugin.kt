@@ -15,6 +15,8 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import com.hoho.android.usbserial.driver.UsbSerialPort
+import com.hoho.android.usbserial.driver.UsbSerialProber
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -41,8 +43,7 @@ class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
 
     private class UsbConn(
         val connection: UsbDeviceConnection,
-        val iface:      UsbInterface,
-        val bulkOut:    UsbEndpoint,
+        val port:       UsbSerialPort,
         val running:    AtomicBoolean,
         val thread:     Thread,
     )
@@ -141,6 +142,47 @@ class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
                 writePool.submit { writeDevice(name, data) }
             }
 
+            "setUsbDtr" -> {
+                val name = call.argument<String>("name")
+                    ?: return result.error("INVALID_ARG", "name required", null)
+                val active = call.argument<Boolean>("active")
+                    ?: return result.error("INVALID_ARG", "active required", null)
+                val c = connections[name]
+                    ?: return result.error("NOT_OPEN", "Device is not open", null)
+                runCatching { c.port.setDTR(active) }
+                    .onSuccess { result.success(null) }
+                    .onFailure { result.error("CONTROL_FAILED", it.message, null) }
+            }
+
+            "setUsbRts" -> {
+                val name = call.argument<String>("name")
+                    ?: return result.error("INVALID_ARG", "name required", null)
+                val active = call.argument<Boolean>("active")
+                    ?: return result.error("INVALID_ARG", "active required", null)
+                val c = connections[name]
+                    ?: return result.error("NOT_OPEN", "Device is not open", null)
+                runCatching { c.port.setRTS(active) }
+                    .onSuccess { result.success(null) }
+                    .onFailure { result.error("CONTROL_FAILED", it.message, null) }
+            }
+
+            "getUsbControlCapabilities" -> {
+                val name = call.argument<String>("name")
+                    ?: return result.error("INVALID_ARG", "name required", null)
+                val c = connections[name]
+                    ?: return result.error("NOT_OPEN", "Device is not open", null)
+                runCatching { c.port.getSupportedControlLines() }
+                    .onSuccess { lines ->
+                        result.success(
+                            mapOf(
+                                "dtr" to lines.contains(UsbSerialPort.ControlLine.DTR),
+                                "rts" to lines.contains(UsbSerialPort.ControlLine.RTS),
+                            )
+                        )
+                    }
+                    .onFailure { result.error("CONTROL_FAILED", it.message, null) }
+            }
+
             else -> result.notImplemented()
         }
     }
@@ -234,32 +276,27 @@ class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
         val conn = usbManager.openDevice(device)
             ?: return result.error("OPEN_FAILED", "Cannot open USB device", null)
 
-        val triple = findDataInterface(device)
-        if (triple == null) {
+        val driver = UsbSerialProber.getDefaultProber().probeDevice(device)
+        if (driver == null || driver.ports.isEmpty()) {
             conn.close()
-            return result.error("NO_INTERFACE", "No bulk serial interface found", null)
+            return result.error("NO_DRIVER", "No supported USB serial driver found", null)
         }
-        val (iface, bulkIn, bulkOut) = triple
-
-        if (!conn.claimInterface(iface, true)) {
+        val port = driver.ports[0]
+        try {
+            port.open(conn)
+            port.setParameters(baud, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+        } catch (e: Exception) {
+            runCatching { port.close() }
             conn.close()
-            return result.error("CLAIM_FAILED", "Cannot claim USB interface", null)
+            return result.error("OPEN_FAILED", e.message, null)
         }
-
-        when {
-            device.vendorId == 0x067B                              -> initPl2303(conn, device, baud)
-            iface.interfaceClass == 0x0A                           -> initCdcAcm(conn, device, baud)
-            iface.interfaceClass == UsbConstants.USB_CLASS_VENDOR_SPEC -> initVendorDevice(conn, device, iface, baud)
-        }
-
-        val ftdiOffset = if (device.vendorId == 0x0403) 2 else 0
         val running    = AtomicBoolean(true)
-        val buf        = ByteArray(bulkIn.maxPacketSize.coerceAtLeast(64))
+        val buf        = ByteArray(4096)
         val thread     = Thread {
             while (running.get()) {
-                val len = conn.bulkTransfer(bulkIn, buf, buf.size, 100)
-                if (len > ftdiOffset) {
-                    val data = buf.copyOfRange(ftdiOffset, len)
+                val len = try { port.read(buf, 100) } catch (_: Exception) { -1 }
+                if (len > 0) {
+                    val data = buf.copyOfRange(0, len)
                     mainHandler.post {
                         eventSink?.success(mapOf("name" to deviceName, "data" to data))
                     }
@@ -267,7 +304,7 @@ class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
             }
         }.also { it.isDaemon = true; it.start() }
 
-        connections[deviceName] = UsbConn(conn, iface, bulkOut, running, thread)
+        connections[deviceName] = UsbConn(conn, port, running, thread)
         result.success(true)
     }
 
@@ -275,13 +312,13 @@ class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
         val c = connections.remove(deviceName) ?: return
         c.running.set(false)
         runCatching { c.thread.join(500) }
-        c.connection.releaseInterface(c.iface)
+        runCatching { c.port.close() }
         c.connection.close()
     }
 
     private fun writeDevice(deviceName: String, data: ByteArray) {
         val c = connections[deviceName] ?: return
-        c.connection.bulkTransfer(c.bulkOut, data, data.size, 2000)
+        runCatching { c.port.write(data, 2000) }
     }
 
     // ── CDC ACM ─────────────────────────────────────────────────────────────

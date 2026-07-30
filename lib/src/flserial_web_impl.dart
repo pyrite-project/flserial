@@ -116,16 +116,27 @@ class FlSerial {
     _eventController.close();
   }
 
-  /// No-op on web — the Web Serial API does not expose DTR.
-  void setDTR(bool active) {}
+  /// Unsupported on web — the Web Serial API does not expose DTR.
+  Future<void> setDTR(bool active) async {
+    throw UnsupportedError('Web Serial does not expose DTR');
+  }
 
-  /// No-op on web — the Web Serial API does not expose RTS.
-  void setRTS(bool active) {}
+  /// Unsupported on web — the Web Serial API does not expose RTS.
+  Future<void> setRTS(bool active) async {
+    throw UnsupportedError('Web Serial does not expose RTS');
+  }
+
+  Future<SerialControlCapabilities> getControlCapabilities() async =>
+      const SerialControlCapabilities();
 
   /// Always returns all-false on web — modem control lines are not accessible
   /// via the Web Serial API.
-  Map<String, bool> getModemStatus() =>
-      {'CTS': false, 'DSR': false, 'RI': false, 'DCD': false};
+  Map<String, bool> getModemStatus() => {
+    'CTS': false,
+    'DSR': false,
+    'RI': false,
+    'DCD': false,
+  };
 
   /// Returns all serial ports currently visible on this device.
   ///

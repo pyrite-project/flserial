@@ -42,10 +42,12 @@ export 'serial_types.dart';
 /// Requires `<uses-feature android:name="android.hardware.usb.host" />` in
 /// the host app's `AndroidManifest.xml`.
 class FlSerial {
-  static final _usbMethodChannel =
-      MethodChannel('io.github.grzesl.flserial/usb');
-  static final _usbEventChannel =
-      EventChannel('io.github.grzesl.flserial/usb_data');
+  static final _usbMethodChannel = MethodChannel(
+    'io.github.grzesl.flserial/usb',
+  );
+  static final _usbEventChannel = EventChannel(
+    'io.github.grzesl.flserial/usb_data',
+  );
 
   late FLSerialBindings _bindings;
   ffi.Pointer<SerialPort>? _serialPtr;
@@ -166,8 +168,9 @@ class FlSerial {
       _isUsbMode = true;
       _usbDeviceName = deviceName;
 
-      _usbDataSubscription =
-          _usbEventChannel.receiveBroadcastStream().listen((dynamic event) {
+      _usbDataSubscription = _usbEventChannel.receiveBroadcastStream().listen((
+        dynamic event,
+      ) {
         if (event is Map) {
           final bytes = event['data'];
           if (bytes is Uint8List) {
@@ -192,36 +195,63 @@ class FlSerial {
 
       if (type == SerialEventType.lineStatusChanged && msg.length > 1) {
         final int mask = msg[1] as int;
-        _eventController.add(SerialEvent(type, {
-          'CTS': (mask & 0x01) != 0,
-          'DSR': (mask & 0x02) != 0,
-          'RI':  (mask & 0x04) != 0,
-          'DCD': (mask & 0x08) != 0,
-        }));
+        _eventController.add(
+          SerialEvent(type, {
+            'CTS': (mask & 0x01) != 0,
+            'DSR': (mask & 0x02) != 0,
+            'RI': (mask & 0x04) != 0,
+            'DCD': (mask & 0x08) != 0,
+          }),
+        );
       } else {
-        _eventController
-            .add(SerialEvent(type, msg.length > 1 ? msg[1] : null));
+        _eventController.add(SerialEvent(type, msg.length > 1 ? msg[1] : null));
       }
     }
   }
 
   /// Sets the DTR (Data Terminal Ready) control line.
-  ///
-  /// Has no effect if the port is not open.
-  void setDTR(bool active) {
-    if (_serialPtr != null) {
-      _bindings.serial_set_dtr(_serialPtr!, active ? 1 : 0);
+  Future<void> setDTR(bool active) async {
+    if (_isUsbMode && _usbDeviceName != null) {
+      await _usbMethodChannel.invokeMethod<void>('setUsbDtr', {
+        'name': _usbDeviceName,
+        'active': active,
+      });
+    } else if (_serialPtr != null) {
+      final success = _bindings.serial_set_dtr(_serialPtr!, active ? 1 : 0);
+      if (success == 0) {
+        throw StateError('The serial driver rejected the DTR change');
+      }
     }
   }
 
   /// Sets the RTS (Request To Send) control line.
-  ///
-  /// Has no effect if the port is not open or if hardware flow control is
-  /// enabled (the driver controls RTS automatically in that case).
-  void setRTS(bool active) {
-    if (_serialPtr != null) {
-      _bindings.serial_set_rts(_serialPtr!, active ? 1 : 0);
+  Future<void> setRTS(bool active) async {
+    if (_isUsbMode && _usbDeviceName != null) {
+      await _usbMethodChannel.invokeMethod<void>('setUsbRts', {
+        'name': _usbDeviceName,
+        'active': active,
+      });
+    } else if (_serialPtr != null) {
+      final success = _bindings.serial_set_rts(_serialPtr!, active ? 1 : 0);
+      if (success == 0) {
+        throw StateError('The serial driver rejected the RTS change');
+      }
     }
+  }
+
+  /// Returns whether the currently open transport can drive DTR/RTS.
+  Future<SerialControlCapabilities> getControlCapabilities() async {
+    if (_isUsbMode && _usbDeviceName != null) {
+      final value = await _usbMethodChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'getUsbControlCapabilities',
+        {'name': _usbDeviceName},
+      );
+      return SerialControlCapabilities(
+        dtr: value?['dtr'] == true,
+        rts: value?['rts'] == true,
+      );
+    }
+    return const SerialControlCapabilities(dtr: true, rts: true);
   }
 
   /// Returns the current state of the input modem control lines.
@@ -235,7 +265,7 @@ class FlSerial {
     return {
       'CTS': (status & 0x01) != 0,
       'DSR': (status & 0x02) != 0,
-      'RI':  (status & 0x04) != 0,
+      'RI': (status & 0x04) != 0,
       'DCD': (status & 0x08) != 0,
     };
   }

@@ -28,8 +28,8 @@ enum SerialEventType {
   /// out of range.
   static SerialEventType? fromInt(int i) =>
       i >= 0 && i < SerialEventType.values.length
-          ? SerialEventType.values[i]
-          : null;
+      ? SerialEventType.values[i]
+      : null;
 }
 
 /// A single event emitted on the [FlSerial.events] stream.
@@ -56,6 +56,16 @@ class SerialEvent {
 
   /// Creates a [SerialEvent] with the given [type] and optional [data].
   SerialEvent(this.type, this.data);
+}
+
+/// Which modem control lines a serial transport can drive.
+class SerialControlCapabilities {
+  final bool dtr;
+  final bool rts;
+
+  const SerialControlCapabilities({this.dtr = false, this.rts = false});
+
+  bool get supportsHardwareReset => dtr || rts;
 }
 
 /// Port configuration passed to [FlSerial.open].

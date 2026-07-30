@@ -55,16 +55,12 @@ FFI_EXPORT void serial_write(SerialPort* sp, const uint8_t* data, int length) {
 
 // --- LINIE MODEMOWE (CONTROL) ---
 
-FFI_EXPORT void serial_set_dtr(SerialPort* sp, int active) {
-    if (sp) {
-        sp->set_dtr(active != 0);
-    }
+FFI_EXPORT int serial_set_dtr(SerialPort* sp, int active) {
+    return sp && sp->set_dtr(active != 0) ? 1 : 0;
 }
 
-FFI_EXPORT void serial_set_rts(SerialPort* sp, int active) {
-    if (sp) {
-        sp->set_rts(active != 0);
-    }
+FFI_EXPORT int serial_set_rts(SerialPort* sp, int active) {
+    return sp && sp->set_rts(active != 0) ? 1 : 0;
 }
 
 // --- STATUS LINII (INPUT) ---
