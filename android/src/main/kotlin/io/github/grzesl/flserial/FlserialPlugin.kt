@@ -15,10 +15,10 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
+import com.hoho.android.usbserial.util.SerialInputOutputManager
 
 class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
 
@@ -35,7 +35,6 @@ class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
     private var eventSink: EventChannel.EventSink? = null
     private val connections = mutableMapOf<String, UsbConn>()
     private val mainHandler  = Handler(Looper.getMainLooper())
-    private val writePool    = Executors.newSingleThreadExecutor()
     private var receiverRegistered = false
 
     private data class PendingOpen(val deviceName: String, val baud: Int, val result: MethodChannel.Result)
@@ -44,8 +43,7 @@ class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
     private class UsbConn(
         val connection: UsbDeviceConnection,
         val port:       UsbSerialPort,
-        val running:    AtomicBoolean,
-        val thread:     Thread,
+        val ioManager:  SerialInputOutputManager,
     )
 
     // ── Permission broadcast receiver ───────────────────────────────────────
@@ -138,8 +136,7 @@ class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
                     ?: return result.error("INVALID_ARG", "name required", null)
                 val data = call.argument<ByteArray>("data")
                     ?: return result.error("INVALID_ARG", "data required", null)
-                result.success(null)
-                writePool.submit { writeDevice(name, data) }
+                writeDevice(name, data, result)
             }
 
             "setUsbDtr" -> {
@@ -285,40 +282,63 @@ class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
         try {
             port.open(conn)
             port.setParameters(baud, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+            if (driver is CdcAcmSerialDriver &&
+                port.getSupportedControlLines().contains(UsbSerialPort.ControlLine.DTR)) {
+                // Native USB CDC consoles use DTR as the host-open signal.
+                // Keep RTS untouched so opening the console cannot form an
+                // ESP32 auto-reset sequence.
+                port.setDTR(true)
+            }
         } catch (e: Exception) {
             runCatching { port.close() }
             conn.close()
             return result.error("OPEN_FAILED", e.message, null)
         }
-        val running    = AtomicBoolean(true)
-        val buf        = ByteArray(4096)
-        val thread     = Thread {
-            while (running.get()) {
-                val len = try { port.read(buf, 100) } catch (_: Exception) { -1 }
-                if (len > 0) {
-                    val data = buf.copyOfRange(0, len)
+
+        val ioManager = SerialInputOutputManager(
+            port,
+            object : SerialInputOutputManager.Listener {
+                override fun onNewData(data: ByteArray) {
                     mainHandler.post {
                         eventSink?.success(mapOf("name" to deviceName, "data" to data))
                     }
                 }
-            }
-        }.also { it.isDaemon = true; it.start() }
 
-        connections[deviceName] = UsbConn(conn, port, running, thread)
+                override fun onRunError(error: Exception) {
+                    mainHandler.post {
+                        eventSink?.success(
+                            mapOf(
+                                "name" to deviceName,
+                                "error" to (error.message ?: error.javaClass.simpleName),
+                            )
+                        )
+                    }
+                }
+            }
+        )
+
+        connections[deviceName] = UsbConn(conn, port, ioManager)
+        ioManager.start()
         result.success(true)
     }
 
     private fun closeDevice(deviceName: String) {
         val c = connections.remove(deviceName) ?: return
-        c.running.set(false)
-        runCatching { c.thread.join(500) }
+        c.ioManager.stop()
         runCatching { c.port.close() }
         c.connection.close()
     }
 
-    private fun writeDevice(deviceName: String, data: ByteArray) {
-        val c = connections[deviceName] ?: return
-        runCatching { c.port.write(data, 2000) }
+    private fun writeDevice(
+        deviceName: String,
+        data: ByteArray,
+        result: MethodChannel.Result,
+    ) {
+        val c = connections[deviceName]
+            ?: return result.error("NOT_OPEN", "Device is not open", null)
+        runCatching { c.ioManager.writeAsync(data) }
+            .onSuccess { result.success(null) }
+            .onFailure { result.error("WRITE_FAILED", it.message, null) }
     }
 
     // ── CDC ACM ─────────────────────────────────────────────────────────────

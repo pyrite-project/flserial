@@ -158,30 +158,40 @@ class FlSerial {
   }
 
   Future<bool> _openUsb(String deviceName, SerialConfig config) async {
+    _isUsbMode = true;
+    _usbDeviceName = deviceName;
+    _usbDataSubscription = _usbEventChannel.receiveBroadcastStream().listen((
+      dynamic event,
+    ) {
+      if (event is! Map || event['name'] != _usbDeviceName) return;
+      final bytes = event['data'];
+      if (bytes is Uint8List) {
+        _eventController.add(SerialEvent(SerialEventType.data, bytes));
+        return;
+      }
+      final error = event['error'];
+      if (error != null) {
+        _eventController.add(
+          SerialEvent(SerialEventType.error, error.toString()),
+        );
+      }
+    });
+
     try {
       final ok = await _usbMethodChannel.invokeMethod<bool>('openUsbDevice', {
         'name': deviceName,
         'baud': config.baudRate,
       });
-      if (ok != true) return false;
-
-      _isUsbMode = true;
-      _usbDeviceName = deviceName;
-
-      _usbDataSubscription = _usbEventChannel.receiveBroadcastStream().listen((
-        dynamic event,
-      ) {
-        if (event is Map) {
-          final bytes = event['data'];
-          if (bytes is Uint8List) {
-            _eventController.add(SerialEvent(SerialEventType.data, bytes));
-          }
-        }
-      });
+      if (ok != true) {
+        _stopSession();
+        return false;
+      }
 
       _eventController.add(SerialEvent(SerialEventType.connected, null));
       return true;
-    } catch (_) {
+    } catch (error) {
+      _stopSession();
+      _eventController.add(SerialEvent(SerialEventType.error, error));
       return false;
     }
   }
@@ -276,10 +286,16 @@ class FlSerial {
   /// native worker thread. Has no effect if the port is not open.
   void write(Uint8List data) {
     if (_isUsbMode && _usbDeviceName != null) {
-      _usbMethodChannel.invokeMethod<void>('writeUsbDevice', {
-        'name': _usbDeviceName,
-        'data': data,
-      });
+      _usbMethodChannel
+          .invokeMethod<void>('writeUsbDevice', {
+            'name': _usbDeviceName,
+            'data': data,
+          })
+          .catchError((Object error) {
+            if (!_eventController.isClosed) {
+              _eventController.add(SerialEvent(SerialEventType.error, error));
+            }
+          });
       return;
     }
     if (_serialPtr == null) return;
