@@ -19,6 +19,9 @@ import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
 
@@ -44,6 +47,7 @@ class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
         val connection: UsbDeviceConnection,
         val port:       UsbSerialPort,
         val ioManager:  SerialInputOutputManager,
+        val writeExecutor: ExecutorService,
     )
 
     // ── Permission broadcast receiver ───────────────────────────────────────
@@ -317,13 +321,25 @@ class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
             }
         )
 
-        connections[deviceName] = UsbConn(conn, port, ioManager)
+        // Keep writes on a dedicated per-port queue.  SerialInputOutputManager's
+        // writeAsync uses a bounded ByteBuffer and rejects the whole call when
+        // it cannot fit the next chunk; that is especially easy to trigger during
+        // raw-REPL/file transactions and leaves the device without the result
+        // marker.  Synchronous writes preserve ordering and report completion
+        // through the same asynchronous Dart API without blocking the UI thread.
+        val writeExecutor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "Flserial-$deviceName-write").also { it.isDaemon = true }
+        }
+
+        connections[deviceName] = UsbConn(conn, port, ioManager, writeExecutor)
         ioManager.start()
         result.success(true)
     }
 
     private fun closeDevice(deviceName: String) {
         val c = connections.remove(deviceName) ?: return
+        c.writeExecutor.shutdownNow()
+        runCatching { c.writeExecutor.awaitTermination(2500, TimeUnit.MILLISECONDS) }
         c.ioManager.stop()
         runCatching { c.port.close() }
         c.connection.close()
@@ -336,8 +352,22 @@ class FlserialPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityA
     ) {
         val c = connections[deviceName]
             ?: return result.error("NOT_OPEN", "Device is not open", null)
-        runCatching { c.ioManager.writeAsync(data) }
-            .onSuccess { result.success(null) }
+        runCatching {
+            c.writeExecutor.submit {
+                try {
+                    c.port.write(data, 2000)
+                } catch (error: Exception) {
+                    mainHandler.post {
+                        eventSink?.success(
+                            mapOf(
+                                "name" to deviceName,
+                                "error" to (error.message ?: error.javaClass.simpleName),
+                            )
+                        )
+                    }
+                }
+            }
+        }.onSuccess { result.success(null) }
             .onFailure { result.error("WRITE_FAILED", it.message, null) }
     }
 
