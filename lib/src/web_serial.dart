@@ -88,7 +88,7 @@ Future<List<WebPortDesc>> listWebPorts() async {
     final pid = info.usbProductId;
     final desc = (vid != null && pid != null)
         ? 'VID:${vid.toRadixString(16).padLeft(4, '0').toUpperCase()} '
-          'PID:${pid.toRadixString(16).padLeft(4, '0').toUpperCase()}'
+              'PID:${pid.toRadixString(16).padLeft(4, '0').toUpperCase()}'
         : 'Web Serial Device';
     result.add((path: path, description: desc));
   }
@@ -136,13 +136,17 @@ Future<bool> openWebPort(
   final flowStr = flowControl == 1 ? 'hardware' : 'none';
 
   try {
-    await port.open(SerialOptions(
-      baudRate: baudRate,
-      dataBits: dataBits,
-      stopBits: stopBits,
-      parity: parityStr,
-      flowControl: flowStr,
-    )).toDart;
+    await port
+        .open(
+          SerialOptions(
+            baudRate: baudRate,
+            dataBits: dataBits,
+            stopBits: stopBits,
+            parity: parityStr,
+            flowControl: flowStr,
+          ),
+        )
+        .toDart;
   } catch (_) {
     return false;
   }
@@ -179,8 +183,14 @@ Future<void> closeWebPort(String path) async {
   final conn = _conns.remove(path);
   if (conn == null) return;
   conn.closed = true;
-  try { conn.reader.releaseLock(); } catch (_) {}
-  try { conn.writer.releaseLock(); } catch (_) {}
-  try { await conn.port.close().toDart; } catch (_) {}
+  try {
+    conn.reader.releaseLock();
+  } catch (_) {}
+  try {
+    conn.writer.releaseLock();
+  } catch (_) {}
+  try {
+    await conn.port.close().toDart;
+  } catch (_) {}
   if (!conn.ctrl.isClosed) conn.ctrl.close();
 }

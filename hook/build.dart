@@ -18,15 +18,31 @@ void main(List<String> args) async {
       srcFiles.addAll(['src/flserial.cpp', 'src/windows/dart_api_dl.c']);
     } else if (targetOS == OS.android) {
       // Statically embed C++ runtime — libc++_shared.so is not bundled by Flutter
-      customFlags.addAll(['-std=c++17', '-O2', '-fvisibility=default', '-lc++_static', '-lc++abi']);
+      customFlags.addAll([
+        '-std=c++17',
+        '-O2',
+        '-fvisibility=default',
+        '-lc++_static',
+        '-lc++abi',
+      ]);
       includeDirs.addAll(['src', 'src/linux']);
       srcFiles.addAll(['src/flserial.cpp', 'src/linux/dart_api_dl.cpp']);
     } else if (targetOS == OS.linux) {
-      customFlags.addAll(['-std=c++17', '-O3', '-fvisibility=default', '-lstdc++']);
+      customFlags.addAll([
+        '-std=c++17',
+        '-O3',
+        '-fvisibility=default',
+        '-lstdc++',
+      ]);
       includeDirs.addAll(['src', 'src/linux']);
       srcFiles.addAll(['src/flserial.cpp', 'src/linux/dart_api_dl.cpp']);
     } else if (targetOS == OS.macOS || targetOS == OS.iOS) {
-      customFlags.addAll(['-std=c++17', '-O3', '-fvisibility=default', '-lc++']);
+      customFlags.addAll([
+        '-std=c++17',
+        '-O3',
+        '-fvisibility=default',
+        '-lc++',
+      ]);
       includeDirs.addAll(['src', 'src/macos']);
       srcFiles.addAll(['src/flserial.cpp', 'src/macos/dart_api_dl.cpp']);
     } else {

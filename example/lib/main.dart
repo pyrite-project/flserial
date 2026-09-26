@@ -137,176 +137,198 @@ class _SerialProTerminalState extends State<SerialProTerminal> {
           IconButton(onPressed: _refreshPorts, icon: const Icon(Icons.sync)),
         ],
       ),
-      body: SafeArea(child: Column(
-        children: [
-          // PORT SELECTION
-          Card(
-            margin: const EdgeInsets.all(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // PORT SELECTION
+            Card(
+              margin: const EdgeInsets.all(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButton<String>(
+                        value: _selectedPort,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        hint: const Text("No ports found"),
+                        items: _availablePorts
+                            .map(
+                              (p) => DropdownMenuItem(value: p, child: Text(p)),
+                            )
+                            .toList(),
+                        onChanged: _isConnected
+                            ? null
+                            : (v) => setState(() => _selectedPort = v),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton.icon(
+                      onPressed: _selectedPort != null
+                          ? _toggleConnection
+                          : null,
+                      icon: Icon(_isConnected ? Icons.stop : Icons.play_arrow),
+                      label: Text(_isConnected ? "STOP" : "START"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isConnected
+                            ? Colors.red.shade50
+                            : Colors.green.shade50,
+                        foregroundColor: _isConnected
+                            ? Colors.red
+                            : Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // CONFIGURATION
+            Card(
+              margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                child: Row(
+                  children: [
+                    _cfgDropdown<int>(
+                      label: "Baud",
+                      value: _baudRate,
+                      items: const [
+                        9600,
+                        19200,
+                        38400,
+                        57600,
+                        115200,
+                        230400,
+                        460800,
+                        921600,
+                      ],
+                      onChanged: (v) => setState(() => _baudRate = v!),
+                    ),
+                    const SizedBox(width: 8),
+                    _cfgDropdown<int>(
+                      label: "Data",
+                      value: _dataBits,
+                      items: const [7, 8],
+                      onChanged: (v) => setState(() => _dataBits = v!),
+                    ),
+                    const SizedBox(width: 8),
+                    _cfgDropdown<int>(
+                      label: "Stop",
+                      value: _stopBits,
+                      items: const [1, 2],
+                      onChanged: (v) => setState(() => _stopBits = v!),
+                    ),
+                    const SizedBox(width: 8),
+                    _cfgDropdown<int>(
+                      label: "Parity",
+                      value: _parity,
+                      items: const [0, 1, 2],
+                      labels: const ["N", "O", "E"],
+                      onChanged: (v) => setState(() => _parity = v!),
+                    ),
+                    const SizedBox(width: 8),
+                    _cfgDropdown<int>(
+                      label: "Flow",
+                      value: _flowControl,
+                      items: const [0, 1, 2],
+                      labels: const ["None", "RTS/CTS", "XON/XOFF"],
+                      onChanged: (v) => setState(() => _flowControl = v!),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // MODEM STATUS
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: _modemStatus.entries
+                    .map(
+                      (e) => Row(
+                        children: [
+                          Icon(
+                            Icons.circle,
+                            size: 12,
+                            color: e.value ? Colors.green : Colors.grey,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(e.key, style: const TextStyle(fontSize: 11)),
+                        ],
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+
+            // TERMINAL LOG
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(8),
+                  itemCount: _logs.length,
+                  itemBuilder: (context, i) {
+                    final log = _logs[i];
+                    return Text(
+                      "${log['in'] ? '←' : '→'} ${log['msg']}",
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        color: log['in']
+                            ? Colors.blue.shade900
+                            : Colors.black87,
+                        fontWeight: log['in']
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+
+            // SEND
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
               child: Row(
                 children: [
                   Expanded(
-                    child: DropdownButton<String>(
-                      value: _selectedPort,
-                      isExpanded: true,
-                      underline: const SizedBox(),
-                      hint: const Text("No ports found"),
-                      items: _availablePorts
-                          .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-                          .toList(),
-                      onChanged: _isConnected
-                          ? null
-                          : (v) => setState(() => _selectedPort = v),
+                    child: TextField(
+                      controller: _sendController,
+                      decoration: const InputDecoration(
+                        hintText: "Enter command...",
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onSubmitted: (_) => _sendData(),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  ElevatedButton.icon(
-                    onPressed: _selectedPort != null ? _toggleConnection : null,
-                    icon: Icon(_isConnected ? Icons.stop : Icons.play_arrow),
-                    label: Text(_isConnected ? "STOP" : "START"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isConnected
-                          ? Colors.red.shade50
-                          : Colors.green.shade50,
-                      foregroundColor:
-                          _isConnected ? Colors.red : Colors.green,
-                    ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: _isConnected ? _sendData : null,
+                    icon: const Icon(Icons.send),
                   ),
                 ],
               ),
             ),
-          ),
-
-          // CONFIGURATION
-          Card(
-            margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Row(
-                children: [
-                  _cfgDropdown<int>(
-                    label: "Baud",
-                    value: _baudRate,
-                    items: const [
-                      9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600,
-                    ],
-                    onChanged: (v) => setState(() => _baudRate = v!),
-                  ),
-                  const SizedBox(width: 8),
-                  _cfgDropdown<int>(
-                    label: "Data",
-                    value: _dataBits,
-                    items: const [7, 8],
-                    onChanged: (v) => setState(() => _dataBits = v!),
-                  ),
-                  const SizedBox(width: 8),
-                  _cfgDropdown<int>(
-                    label: "Stop",
-                    value: _stopBits,
-                    items: const [1, 2],
-                    onChanged: (v) => setState(() => _stopBits = v!),
-                  ),
-                  const SizedBox(width: 8),
-                  _cfgDropdown<int>(
-                    label: "Parity",
-                    value: _parity,
-                    items: const [0, 1, 2],
-                    labels: const ["N", "O", "E"],
-                    onChanged: (v) => setState(() => _parity = v!),
-                  ),
-                  const SizedBox(width: 8),
-                  _cfgDropdown<int>(
-                    label: "Flow",
-                    value: _flowControl,
-                    items: const [0, 1, 2],
-                    labels: const ["None", "RTS/CTS", "XON/XOFF"],
-                    onChanged: (v) => setState(() => _flowControl = v!),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // MODEM STATUS
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: _modemStatus.entries
-                  .map(
-                    (e) => Row(
-                      children: [
-                        Icon(
-                          Icons.circle,
-                          size: 12,
-                          color: e.value ? Colors.green : Colors.grey,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(e.key, style: const TextStyle(fontSize: 11)),
-                      ],
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-
-          // TERMINAL LOG
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                border: Border.all(color: Colors.grey.shade300),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(8),
-                itemCount: _logs.length,
-                itemBuilder: (context, i) {
-                  final log = _logs[i];
-                  return Text(
-                    "${log['in'] ? '←' : '→'} ${log['msg']}",
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      color:
-                          log['in'] ? Colors.blue.shade900 : Colors.black87,
-                      fontWeight:
-                          log['in'] ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-
-          // SEND
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _sendController,
-                    decoration: const InputDecoration(
-                      hintText: "Enter command...",
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    onSubmitted: (_) => _sendData(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  onPressed: _isConnected ? _sendData : null,
-                  icon: const Icon(Icons.send),
-                ),
-              ],
-            ),
-          ),
-        ],
-      )),
+          ],
+        ),
+      ),
     );
   }
 
@@ -322,21 +344,24 @@ class _SerialProTerminalState extends State<SerialProTerminal> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label,
-              style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
           DropdownButton<T>(
             value: value,
             isExpanded: true,
             isDense: true,
             underline: const SizedBox(),
-            items: items.asMap().entries
-                .map((e) => DropdownMenuItem<T>(
-                      value: e.value,
-                      child: Text(
-                        labels != null ? labels[e.key] : e.value.toString(),
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                    ))
+            items: items
+                .asMap()
+                .entries
+                .map(
+                  (e) => DropdownMenuItem<T>(
+                    value: e.value,
+                    child: Text(
+                      labels != null ? labels[e.key] : e.value.toString(),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                )
                 .toList(),
             onChanged: _isConnected ? null : onChanged,
           ),

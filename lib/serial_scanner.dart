@@ -123,23 +123,26 @@ class SerialScanner {
   static Future<List<SerialPortInfo>> _scanAndroid() async {
     final List<SerialPortInfo> ports = [];
     try {
-      final List<dynamic>? result =
-          await _usbChannel.invokeListMethod<dynamic>('listUsbSerialDevices');
+      final List<dynamic>? result = await _usbChannel.invokeListMethod<dynamic>(
+        'listUsbSerialDevices',
+      );
       if (result != null) {
         for (final item in result) {
           if (item is Map) {
             final name = item['name'] as String? ?? '';
             final product = item['product'] as String? ?? '';
             final manufacturer = item['manufacturer'] as String? ?? '';
-            final desc = [manufacturer, product]
-                .where((s) => s.isNotEmpty)
-                .join(' ')
-                .trim();
+            final desc = [
+              manufacturer,
+              product,
+            ].where((s) => s.isNotEmpty).join(' ').trim();
             if (name.isNotEmpty) {
-              ports.add(SerialPortInfo(
-                'usb:$name',
-                desc.isNotEmpty ? desc : 'USB Serial Device',
-              ));
+              ports.add(
+                SerialPortInfo(
+                  'usb:$name',
+                  desc.isNotEmpty ? desc : 'USB Serial Device',
+                ),
+              );
             }
           }
         }

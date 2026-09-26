@@ -14,8 +14,7 @@ Future<bool> openWebPort(
   int stopBits = 1,
   int parity = 0,
   int flowControl = 0,
-}) async =>
-    false;
+}) async => false;
 
 Stream<Uint8List>? webDataStream(String path) => null;
 
