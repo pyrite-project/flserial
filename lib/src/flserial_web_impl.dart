@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:flserial/serial_scanner.dart';
+import 'package:flserial/serial_port_info.dart';
 import 'serial_types.dart';
 import 'web_serial.dart' hide SerialPortInfo, SerialPort, SerialOptions;
 
@@ -116,18 +116,23 @@ class FlSerial {
     _eventController.close();
   }
 
-  /// Unsupported on web — the Web Serial API does not expose DTR.
+  /// Controls the DTR line via Web Serial's `port.setSignals()`.
   Future<void> setDTR(bool active) async {
-    throw UnsupportedError('Web Serial does not expose DTR');
+    if (_webPath != null) {
+      await setWebPortSignals(_webPath!, dataTerminalReady: active);
+    }
   }
 
-  /// Unsupported on web — the Web Serial API does not expose RTS.
+  /// Controls the RTS line via Web Serial's `port.setSignals()`.
   Future<void> setRTS(bool active) async {
-    throw UnsupportedError('Web Serial does not expose RTS');
+    if (_webPath != null) {
+      await setWebPortSignals(_webPath!, requestToSend: active);
+    }
   }
 
+  /// Web Serial exposes `setSignals()`, so hardware-reset strategies work.
   Future<SerialControlCapabilities> getControlCapabilities() async =>
-      const SerialControlCapabilities();
+      const SerialControlCapabilities(dtr: true, rts: true);
 
   /// Always returns all-false on web — modem control lines are not accessible
   /// via the Web Serial API.
@@ -142,6 +147,17 @@ class FlSerial {
   ///
   /// On web, always returns a single `"Web Serial Port"` entry whose path is
   /// `web:request`. Passing that path to [open] shows the browser picker.
-  static Future<List<SerialPortInfo>> availablePorts() =>
-      SerialScanner.getAvailablePorts();
+  /// Already-granted ports are additionally listed with their `web:N` paths
+  /// so reconnects can target the same device.
+  static Future<List<SerialPortInfo>> availablePorts() async {
+    final ports = <SerialPortInfo>[
+      SerialPortInfo('web:request', 'Web Serial Port'),
+    ];
+    try {
+      for (final (:path, :description) in await listWebPorts()) {
+        ports.add(SerialPortInfo(path, description));
+      }
+    } catch (_) {}
+    return ports;
+  }
 }

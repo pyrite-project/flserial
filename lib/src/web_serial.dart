@@ -17,9 +17,18 @@ extension type Serial._(JSObject _) implements JSObject {
 extension type SerialPort._(JSObject _) implements JSObject {
   external JSPromise<JSAny?> open(SerialOptions options);
   external JSPromise<JSAny?> close();
+  external JSPromise<JSAny?> setSignals(SerialOutputSignals signals);
   external ReadableStream get readable;
   external WritableStream get writable;
   external SerialPortInfo getInfo();
+}
+
+@JS()
+extension type SerialOutputSignals._(JSObject _) implements JSObject {
+  external factory SerialOutputSignals({
+    JSBoolean? dataTerminalReady,
+    JSBoolean? requestToSend,
+  });
 }
 
 @JS()
@@ -173,6 +182,24 @@ Stream<Uint8List>? webDataStream(String path) => _conns[path]?.ctrl.stream;
 
 void writeWebPort(String path, Uint8List data) {
   _conns[path]?.writer.write(data.toJS); // fire-and-forget
+}
+
+/// Sets DTR/RTS modem-control lines on the open port via `setSignals()`.
+Future<void> setWebPortSignals(
+  String path, {
+  bool? dataTerminalReady,
+  bool? requestToSend,
+}) async {
+  final conn = _conns[path];
+  if (conn == null) return;
+  await conn.port
+      .setSignals(
+        SerialOutputSignals(
+          dataTerminalReady: dataTerminalReady?.toJS,
+          requestToSend: requestToSend?.toJS,
+        ),
+      )
+      .toDart;
 }
 
 Future<void> closeWebPort(String path) async {
