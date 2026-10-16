@@ -68,6 +68,41 @@ class SerialControlCapabilities {
   bool get supportsHardwareReset => dtr || rts;
 }
 
+/// Platform-neutral reason why [FlSerial.open] failed.
+enum SerialOpenFailure {
+  /// The OS or the user refused access to the port.
+  permissionDenied,
+
+  /// Another program holds the port open.
+  busy,
+
+  /// The port no longer exists, e.g. the device was unplugged.
+  notFound,
+
+  /// No driver supports the USB serial chip (Android only).
+  unsupportedDevice,
+
+  /// Any failure not covered above; see [SerialOpenError.detail].
+  unknown,
+}
+
+/// Why the most recent [FlSerial.open] call failed.
+class SerialOpenError {
+  /// Classified failure reason.
+  final SerialOpenFailure reason;
+
+  /// Raw platform error, e.g. `errno 13`, `Windows error 5` or an Android
+  /// error code, for logs and messages that need the original value.
+  final String detail;
+
+  /// Creates a [SerialOpenError] with the classified [reason] and raw
+  /// platform [detail].
+  const SerialOpenError(this.reason, this.detail);
+
+  @override
+  String toString() => 'SerialOpenError(${reason.name}, $detail)';
+}
+
 /// Port configuration passed to [FlSerial.open].
 ///
 /// All parameters are optional and default to the most common RS-232 settings

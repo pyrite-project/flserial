@@ -52,6 +52,12 @@ FFI_EXPORT void register_port(SerialPort* sp, int64_t port_id);
 FFI_EXPORT bool serial_open_ext(SerialPort* sp, const char* path, int baud, int dataBits, int stopBits, int parity, int flowControl);
 
 /**
+ * Zwraca kod błędu systemu (errno / GetLastError) ostatniego nieudanego
+ * serial_open_ext, lub 0.
+ */
+FFI_EXPORT int serial_last_error(SerialPort* sp);
+
+/**
  * Zamyka fizyczne połączenie z portem.
  */
 FFI_EXPORT void serial_close(SerialPort* sp);

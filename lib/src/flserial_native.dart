@@ -59,6 +59,12 @@ class FlSerial {
   String? _usbDeviceName;
   StreamSubscription? _usbDataSubscription;
 
+  SerialOpenError? _lastOpenError;
+
+  /// Why the most recent [open] call failed, or `null` after a successful
+  /// open.
+  SerialOpenError? get lastOpenError => _lastOpenError;
+
   /// Broadcast stream of all port events.
   ///
   /// Subscribe before calling [open] to avoid missing the initial
@@ -124,6 +130,7 @@ class FlSerial {
   /// previous session first.
   Future<bool> open(String path, SerialConfig config) async {
     _stopSession();
+    _lastOpenError = null;
 
     if (Platform.isAndroid && path.startsWith('usb:')) {
       return _openUsb(path.substring(4), config);
@@ -147,6 +154,7 @@ class FlSerial {
       );
 
       if (!success) {
+        _lastOpenError = _osOpenError(_bindings.serial_last_error(_serialPtr!));
         _stopSession();
         return false;
       }
@@ -190,6 +198,7 @@ class FlSerial {
       _eventController.add(SerialEvent(SerialEventType.connected, null));
       return true;
     } catch (error) {
+      _lastOpenError = _usbOpenError(error);
       _stopSession();
       _eventController.add(SerialEvent(SerialEventType.error, error));
       return false;
@@ -355,4 +364,55 @@ class FlSerial {
   static Future<List<SerialPortInfo>> availablePorts() async {
     return SerialScanner.getAvailablePorts();
   }
+}
+
+/// Classifies the OS error code captured by the native `open()`.
+SerialOpenError _osOpenError(int code) {
+  if (Platform.isWindows) return _windowsOpenError(code);
+
+  const eperm = 1, enoent = 2, enxio = 6, eacces = 13, ebusy = 16, enodev = 19;
+  final detail = 'errno $code';
+  if (code == eacces || code == eperm) {
+    return SerialOpenError(SerialOpenFailure.permissionDenied, detail);
+  }
+  // EBUSY: another process opened the port exclusively (TIOCEXCL).
+  if (code == ebusy) {
+    return SerialOpenError(SerialOpenFailure.busy, detail);
+  }
+  if (code == enoent || code == enxio || code == enodev) {
+    return SerialOpenError(SerialOpenFailure.notFound, detail);
+  }
+  return SerialOpenError(SerialOpenFailure.unknown, detail);
+}
+
+SerialOpenError _windowsOpenError(int code) {
+  const errorFileNotFound = 2, errorAccessDenied = 5, errorDeviceRemoved = 1617;
+  final detail = 'Windows error $code';
+  // COM ports open exclusively, so access denied means another program
+  // already holds the port.
+  if (code == errorAccessDenied) {
+    return SerialOpenError(SerialOpenFailure.busy, detail);
+  }
+  if (code == errorFileNotFound || code == errorDeviceRemoved) {
+    return SerialOpenError(SerialOpenFailure.notFound, detail);
+  }
+  return SerialOpenError(SerialOpenFailure.unknown, detail);
+}
+
+/// Classifies an `openUsbDevice` failure reported by the Android plugin.
+SerialOpenError _usbOpenError(Object error) {
+  if (error is! PlatformException) {
+    return SerialOpenError(SerialOpenFailure.unknown, '$error');
+  }
+  final detail = '${error.code}: ${error.message}';
+  if (error.code == 'PERMISSION_DENIED') {
+    return SerialOpenError(SerialOpenFailure.permissionDenied, detail);
+  }
+  if (error.code == 'NOT_FOUND') {
+    return SerialOpenError(SerialOpenFailure.notFound, detail);
+  }
+  if (error.code == 'NO_DRIVER') {
+    return SerialOpenError(SerialOpenFailure.unsupportedDevice, detail);
+  }
+  return SerialOpenError(SerialOpenFailure.unknown, detail);
 }
