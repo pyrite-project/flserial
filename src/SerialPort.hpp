@@ -37,7 +37,7 @@ enum SerialEventType
 class SerialPort
 {
 public:
-    SerialPort() : running(false), send_port_id(0), last_modem_status(-1)
+    SerialPort() : running(false), send_port_id(0), last_modem_status(-1), last_error(0)
     {
 #ifdef PLATFORM_WINDOWS
         hSerial = INVALID_HANDLE_VALUE;
@@ -56,9 +56,16 @@ public:
         send_port_id = port_id;
     }
 
+    // OS error code (errno / GetLastError) of the last failed open(), or 0.
+    int get_last_error() const
+    {
+        return last_error;
+    }
+
     bool open(const std::string &portName, int baudRate, int dataBits, int stopBits, int parity, int flowControl = 0)
     {
         close();
+        last_error = 0;
 
 #ifdef PLATFORM_WINDOWS
         std::string portPath = (portName.rfind("\\\\.\\", 0) == 0)
@@ -66,7 +73,10 @@ public:
             : "\\\\.\\" + portName;
         hSerial = CreateFileA(portPath.c_str(), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
         if (hSerial == INVALID_HANDLE_VALUE)
+        {
+            last_error = (int)GetLastError();
             return false;
+        }
 
         DCB dcb = {0};
         dcb.DCBlength = sizeof(dcb);
@@ -121,6 +131,8 @@ public:
         fd = ::open(portName.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
         if (fd == -1)
         {
+            // Capture errno first: posting the event below may overwrite it.
+            last_error = errno;
             send_simple_event(EVENT_ERROR);
             return false;
         }
@@ -305,6 +317,7 @@ private:
     std::thread writeThread;
     std::atomic<Dart_Port> send_port_id;
     std::atomic<int> last_modem_status;
+    int last_error;
     std::chrono::steady_clock::time_point last_status_check;
 
     std::queue<std::vector<uint8_t>> writeQueue;

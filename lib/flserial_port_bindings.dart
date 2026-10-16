@@ -121,6 +121,19 @@ class FLSerialBindings {
         )
       >();
 
+  /// Zwraca kod błędu systemu (errno / GetLastError) ostatniego nieudanego
+  /// serial_open_ext, lub 0.
+  int serial_last_error(ffi.Pointer<SerialPort> sp) {
+    return _serial_last_error(sp);
+  }
+
+  late final _serial_last_errorPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<SerialPort>)>>(
+        'serial_last_error',
+      );
+  late final _serial_last_error = _serial_last_errorPtr
+      .asFunction<int Function(ffi.Pointer<SerialPort>)>();
+
   /// Zamyka fizyczne połączenie z portem.
   void serial_close(ffi.Pointer<SerialPort> sp) {
     return _serial_close(sp);

@@ -53,6 +53,9 @@ class FlSerial {
   String? _webPath;
   StreamSubscription? _webDataSub;
 
+  /// Always `null`: Web Serial does not report why [open] failed.
+  SerialOpenError? get lastOpenError => null;
+
   /// Creates a new [FlSerial] instance.
   FlSerial();
 
