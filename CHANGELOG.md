@@ -1,3 +1,11 @@
+## 0.7.1
+
+### Open failure reasons
+* Added `FlSerial.lastOpenError` — a `SerialOpenError` with a platform-neutral `SerialOpenFailure` reason (`permissionDenied`, `busy`, `notFound`, `unsupportedDevice`, `unknown`) and the raw platform `detail` when `open()` returns `false`
+* Native `open()` now records `errno` (POSIX) / `GetLastError()` (Windows), exposed through the new `serial_last_error()` C function
+* Android `openUsbDevice` failures (`PERMISSION_DENIED`, `NOT_FOUND`, `NO_DRIVER`) are classified instead of only being emitted as an error event
+* `open()` still returns `Future<bool>`; existing callers are unaffected
+
 ## 0.7.0
 
 ### Web support

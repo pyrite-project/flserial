@@ -41,6 +41,11 @@ FFI_EXPORT bool serial_open_ext(SerialPort* sp, const char* path, int baud, int 
     return sp->open(std::string(path), baud, dataBits, stopBits, parity, flowControl);
 }
 
+FFI_EXPORT int serial_last_error(SerialPort* sp) {
+    if (!sp) return 0;
+    return sp->get_last_error();
+}
+
 FFI_EXPORT void serial_close(SerialPort* sp) {
     if (sp) {
         sp->close();
